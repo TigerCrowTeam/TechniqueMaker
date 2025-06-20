@@ -2,6 +2,9 @@ import math
 import struct
 import numpy as np
 from numpy.typing import NDArray # For specific NumPy array type hints
+import tkinter as tk
+from tkinter import messagebox, scrolledtext
+import inspect
 
 def numpy_complex_to_binary_file(complex_array, filename="complex_output.bin"):
     """
@@ -33,7 +36,53 @@ def numpy_complex_to_binary_file(complex_array, filename="complex_output.bin"):
         f.write(output_data)
 
     print(f"Complex data written to '{filename}' in binary format (interleaved floats).")
+    
+def numpy_complex_to_binary_file_int(data_array, filename):
+    """
+    Converts a numpy array to a binary file, handling both complex and float arrays.
 
+    If the input array contains complex numbers, it rounds both real and
+    imaginary components. If the input array contains floating-point numbers,
+    it treats them as complex numbers with a zero imaginary component and
+    rounds the real part. The rounded real and (zero) imaginary components
+    are then stored as 16-bit signed big-endian integers in the specified
+    binary file.
+
+    Args:
+        data_array (numpy.ndarray): A numpy array of complex or floating-point numbers.
+        filename (str, optional): The name of the binary file to create.
+            Defaults to "complex_data.bin".
+    """
+    if not isinstance(data_array, np.ndarray) or (data_array.dtype != np.complex_ and not np.issubdtype(data_array.dtype, np.floating)):
+        raise ValueError("Input must be a numpy array of complex or floating-point numbers.")
+
+
+    maxReal=np.max(data_array.real)
+    maxImag=np.max(data_array.imag)
+    maxVal=max(maxReal,maxImag)
+    data_array=data_array/maxVal*32000
+    
+    
+
+    with open(filename, 'wb') as f:
+        counter=0
+        for value in data_array.flatten():
+            if np.iscomplex(value):
+                real_rounded = int(np.round(value.real))
+                imag_rounded = int(np.round(value.imag))
+            else:  # Treat as float with zero imaginary part
+                real_rounded = int(np.round(value.real))
+                imag_rounded = 0
+            counter=counter+1
+            if counter%10000==0:
+                print(counter)
+
+            # Pack the rounded real and imaginary parts as 16-bit signed big-endian integers
+            f.write(struct.pack('>h', real_rounded))
+            f.write(struct.pack('>h', imag_rounded))
+
+    print(f"Data has been processed and saved to '{filename}'.")
+    
 
 
 def narrowband_noise_creator(
@@ -192,24 +241,6 @@ def chunk_noise_creator(
     
     return chunked_noise
 
-def swept_tone(
-    sweep_hz: float,
-    sample_rate_hz: float,
-    technique_length_seconds: float
-) -> NDArray:
-    num_samples=math.floor(sample_rate_hz*technique_length_seconds)
-    #Creates a time array for the technique length
-    time=np.linspace(0, technique_length_seconds-technique_length_seconds/num_samples, num_samples, dtype=np.float64)
-    #Function of the desired sweep
-    #y=mx+b
-    freq_sweep_func=sweep_hz/technique_length_seconds*time-sweep_hz/2
-    #Numerical integration of the sweep
-    #Done with a cumulative sum divided by sample rate
-    cum_freq_sweep_func=np.cumsum(freq_sweep_func)/sample_rate_hz
-    #Creates a phasor that sweeps over the sweep within the technique time length
-    shifter=np.exp(1j*2*np.pi*cum_freq_sweep_func)
-    
-    return shifter
 
 def swept_phasors(
     sweep_hz: float,
@@ -256,8 +287,247 @@ def swept_cosines(
         swept_tones=swept_tones+np.cos(2*np.pi*cum_freq_sweep_func)
         
     return swept_tones
+
+def FM_cosine(
+    sweep_range_hz: float,
+    modulated_frequency: float,
+    sample_rate_hz: float,
+    technique_length_seconds: float
+) -> NDArray:
+    num_samples=math.floor(sample_rate_hz*technique_length_seconds)
+    #Creates a time array for the technique length
+    time=np.linspace(0, technique_length_seconds-technique_length_seconds/num_samples, num_samples, dtype=np.float64)
+
+    freq_sweep_func=.5*sweep_range_hz*np.cos(2*np.pi*modulated_frequency*time)
+    #Numerical integration of the sweep
+    #Done with a cumulative sum divided by sample rate
+    cum_freq_sweep_func=np.cumsum(freq_sweep_func)/sample_rate_hz
+    #Creates a phasor that sweeps over the sweep within the technique time length
+    FM_modulated_cosine=np.exp(1j*2*np.pi*cum_freq_sweep_func)
+        
+    return FM_modulated_cosine
         
     
+# --- GUI Application ---
 
-X=swept_tone(100000,240000,2)
-numpy_complex_to_binary_file(X, "sweptNoise01.bin")
+class NumPyFileGeneratorApp:
+    def __init__(self, master):
+        self.master = master
+        master.title("NumPy Array Generator")
+        master.geometry("600x600") # Set initial window size
+
+        # Configure columns to expand
+        master.grid_columnconfigure(0, weight=1)
+        master.grid_columnconfigure(1, weight=1)
+        master.grid_rowconfigure(0, weight=1)
+        master.grid_rowconfigure(1, weight=1)
+
+        self.formatter_func_name = tk.StringVar(master)
+        self.generator_func_name = tk.StringVar(master)
+        self.parameter_entries = {} # To store Tkinter Entry widgets for parameters
+        self.filename_var = tk.StringVar(master)
+        self.filename_var.set("output.bin") # Default filename
+
+        self.all_frames = [] # To keep track of frames for easy destruction
+
+        self.create_first_gui()
+
+    def clear_frames(self):
+        """Clears all dynamic frames from the window."""
+        for frame in self.all_frames:
+            frame.destroy()
+        self.all_frames.clear()
+
+    def create_first_gui(self):
+        """Creates the initial GUI for selecting formatter and generator functions."""
+        self.clear_frames()
+
+        # Frame for formatter selection
+        formatter_frame = tk.LabelFrame(self.master, text="Select Array Formatting Function", padx=10, pady=10)
+        formatter_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+        formatter_frame.grid_columnconfigure(0, weight=1)
+        self.all_frames.append(formatter_frame)
+
+        tk.Radiobutton(formatter_frame, text="numpy_complex_to_binary_file",
+                       variable=self.formatter_func_name,
+                       value="numpy_complex_to_binary_file").pack(anchor="w", pady=2)
+        tk.Radiobutton(formatter_frame, text="numpy_complex_to_binary_file_int",
+                       variable=self.formatter_func_name,
+                       value="numpy_complex_to_binary_file_int").pack(anchor="w", pady=2)
+
+        # Set a default selection
+        self.formatter_func_name.set("numpy_complex_to_binary_file")
+
+        # Frame for generator selection
+        generator_frame = tk.LabelFrame(self.master, text="Select Array Generation Function", padx=10, pady=10)
+        generator_frame.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
+        generator_frame.grid_columnconfigure(0, weight=1)
+        self.all_frames.append(generator_frame)
+
+        tk.Radiobutton(generator_frame, text="narrowband_noise_creator",
+                       variable=self.generator_func_name,
+                       value="narrowband_noise_creator").pack(anchor="w", pady=2)
+        tk.Radiobutton(generator_frame, text="swept_noise_creator",
+                       variable=self.generator_func_name,
+                       value="swept_noise_creator").pack(anchor="w", pady=2)
+        tk.Radiobutton(generator_frame, text="chunk_noise_creator",
+                       variable=self.generator_func_name,
+                       value="chunk_noise_creator").pack(anchor="w", pady=2)
+        tk.Radiobutton(generator_frame, text="swept_phasors",
+                       variable=self.generator_func_name,
+                       value="swept_phasors").pack(anchor="w", pady=2)
+        tk.Radiobutton(generator_frame, text="swept_cosines",
+                       variable=self.generator_func_name,
+                       value="swept_cosines").pack(anchor="w", pady=2)
+        tk.Radiobutton(generator_frame, text="FM_cosine",
+                       variable=self.generator_func_name,
+                       value="FM_cosine").pack(anchor="w", pady=2)
+
+        # Set a default selection
+        self.generator_func_name.set("narrowband_noise_creator")
+
+        # Next button
+        next_button = tk.Button(self.master, text="Next", command=self.show_parameters_gui,
+                                bg="#4CAF50", fg="white", font=("Arial", 12, "bold"), relief="raised", bd=3)
+        next_button.grid(row=1, column=0, columnspan=2, pady=20, ipadx=20, ipady=10)
+        self.all_frames.append(next_button) # Add button to all_frames for clearing
+
+    def show_parameters_gui(self):
+        """Creates the second GUI for entering function parameters and filename."""
+        self.clear_frames()
+
+        selected_generator_name = self.generator_func_name.get()
+        generator_func = GENERATOR_FUNCTIONS[selected_generator_name]
+        sig = inspect.signature(generator_func)
+
+        param_frame = tk.LabelFrame(self.master, text=f"Parameters for {selected_generator_name}", padx=10, pady=10)
+        param_frame.grid(row=0, column=0, columnspan=2, padx=10, pady=10, sticky="nsew")
+        param_frame.grid_columnconfigure(1, weight=1)
+        self.all_frames.append(param_frame)
+
+        self.parameter_entries.clear() # Clear previous entries
+
+        row_num = 0
+        for name, param in sig.parameters.items():
+            if name == 'return': # Skip return type hint
+                continue
+
+            # Skip the 'interference_type' parameter for functions that don't use it
+            if name == 'interference_type' and selected_generator_name not in ["narrowband_noise_creator", "swept_noise_creator", "chunk_noise_creator"]:
+                continue
+
+            tk.Label(param_frame, text=f"{name}:", anchor="w").grid(row=row_num, column=0, padx=5, pady=2, sticky="w")
+            entry_var = tk.StringVar(param_frame)
+
+            # Set default values from function signature
+            if param.default is not inspect.Parameter.empty:
+                entry_var.set(str(param.default))
+
+            # Special handling for 'interference_type' as a dropdown
+            if name == "interference_type":
+                option_menu = tk.OptionMenu(param_frame, entry_var, "complex", "real", "sinc")
+                option_menu.grid(row=row_num, column=1, padx=5, pady=2, sticky="ew")
+            else:
+                entry = tk.Entry(param_frame, textvariable=entry_var)
+                entry.grid(row=row_num, column=1, padx=5, pady=2, sticky="ew")
+            self.parameter_entries[name] = entry_var # Store StringVar for retrieval
+            row_num += 1
+
+        # Filename input
+        filename_frame = tk.Frame(self.master, padx=10, pady=10)
+        filename_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=10, sticky="ew")
+        filename_frame.grid_columnconfigure(1, weight=1)
+        self.all_frames.append(filename_frame)
+
+        tk.Label(filename_frame, text="Output Filename:").grid(row=0, column=0, padx=5, pady=2, sticky="w")
+        tk.Entry(filename_frame, textvariable=self.filename_var).grid(row=0, column=1, padx=5, pady=2, sticky="ew")
+
+        # Buttons for this stage
+        button_frame = tk.Frame(self.master, padx=10, pady=10)
+        button_frame.grid(row=2, column=0, columnspan=2, pady=10)
+        self.all_frames.append(button_frame)
+
+        back_button = tk.Button(button_frame, text="Back", command=self.create_first_gui,
+                                bg="#FFA500", fg="white", font=("Arial", 12, "bold"), relief="raised", bd=3)
+        back_button.pack(side="left", padx=10, ipadx=10, ipady=5)
+
+        generate_button = tk.Button(button_frame, text="Generate File", command=self.execute_generation,
+                                    bg="#007BFF", fg="white", font=("Arial", 12, "bold"), relief="raised", bd=3)
+        generate_button.pack(side="right", padx=10, ipadx=10, ipady=5)
+
+
+    def execute_generation(self):
+        """
+        Retrieves parameters, calls selected functions, and handles file output.
+        Displays messages using custom message box.
+        """
+        selected_formatter_name = self.formatter_func_name.get()
+        selected_generator_name = self.generator_func_name.get()
+
+        formatter_func = FORMATTER_FUNCTIONS[selected_formatter_name]
+        generator_func = GENERATOR_FUNCTIONS[selected_generator_name]
+
+        params = {}
+        try:
+            sig = inspect.signature(generator_func)
+            for name, param in sig.parameters.items():
+                if name == 'return':
+                    continue
+
+                # Skip parameters not used by the current function (e.g., interference_type for non-noise)
+                if name == 'interference_type' and selected_generator_name not in ["narrowband_noise_creator", "swept_noise_creator", "chunk_noise_creator"]:
+                    continue
+
+                value_str = self.parameter_entries[name].get()
+                # Attempt to convert to the expected type
+                if param.annotation is float:
+                    params[name] = float(value_str)
+                elif param.annotation is int:
+                    params[name] = int(value_str)
+                elif param.annotation is str:
+                    params[name] = value_str
+                else: # Default to string if type hint not found or unknown
+                    params[name] = value_str
+
+        except ValueError as e:
+            messagebox.showerror("Input Error", f"Invalid input for a parameter: {e}. Please ensure all numerical inputs are valid numbers.")
+            return
+        except KeyError as e:
+            messagebox.showerror("Input Error", f"Missing parameter: {e}. This should not happen. Please report this issue.")
+            return
+
+        output_filename = self.filename_var.get()
+        if not output_filename:
+            messagebox.showerror("Input Error", "Output filename cannot be empty.")
+            return
+
+        try:
+            # Generate the NumPy array
+            generated_array = generator_func(**params)
+            # Format and save the array to a binary file
+            formatter_func(generated_array, output_filename)
+            messagebox.showinfo("Success", f"Successfully generated '{output_filename}' using {selected_generator_name} and formatted with {selected_formatter_name}.")
+        except Exception as e:
+            messagebox.showerror("Error", f"An error occurred during generation or file writing: {e}")
+
+# Mapping of function names to actual functions (global for easy access)
+FORMATTER_FUNCTIONS = {
+    "numpy_complex_to_binary_file": numpy_complex_to_binary_file,
+    "numpy_complex_to_binary_file_int": numpy_complex_to_binary_file_int,
+}
+
+GENERATOR_FUNCTIONS = {
+    "narrowband_noise_creator": narrowband_noise_creator,
+    "swept_noise_creator": swept_noise_creator,
+    "chunk_noise_creator": chunk_noise_creator,
+    "swept_phasors": swept_phasors,
+    "swept_cosines": swept_cosines,
+    "FM_cosine": FM_cosine,
+}
+
+# Main execution block
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = NumPyFileGeneratorApp(root)
+    root.mainloop()
+
