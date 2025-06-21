@@ -57,16 +57,15 @@ def numpy_complex_to_binary_file_int(data_array, filename):
         raise ValueError("Input must be a numpy array of complex or floating-point numbers.")
 
 
-    maxReal=np.max(data_array.real)
-    maxImag=np.max(data_array.imag)
-    maxVal=max(maxReal,maxImag)
-    data_array=data_array/maxVal*32000
+    max_val = np.max(np.concatenate((np.abs(data_array.real), np.abs(data_array.imag))))
+    
+    data_array=data_array/max_val*32000
     
     
 
     with open(filename, 'wb') as f:
         counter=0
-        for value in data_array.flatten():
+        for value in data_array:
             if np.iscomplex(value):
                 real_rounded = int(np.round(value.real))
                 imag_rounded = int(np.round(value.imag))
