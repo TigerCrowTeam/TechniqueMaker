@@ -2,6 +2,7 @@ import numpy as np
 from scipy import signal
 import math
 from numpy.typing import NDArray # For specific NumPy array type hints
+from typing import Literal
 
 def _root_raised_cosine_filter(
     symbol_rate_hz: float,
@@ -81,7 +82,7 @@ def narrowband_noise_creator(
     bandwidth_hz: float,
     sample_rate_hz: float,
     technique_length_seconds: float,
-    interference_type: str = "complex"
+    interference_type: Literal["complex", "real","sinc"] = "complex"
 ) -> NDArray[np.complex128]:
     """
     Generates narrowband noise.
@@ -423,57 +424,215 @@ def FM_cosine(
     return FM_modulated_phasor
 
 
+
+def songMaker(
+    songName: Literal["Air Force Song", "Anchors Away","Marine Hymn","Baby Shark"],
+    bandwidth_hz: float,
+    sample_rate_hz: float,
+) -> NDArray[np.complex128]:
+
+    def noteMaker(noteLengthInBeats,noteNumber,bpm,sampsPerSec,bandwidth):
+
+        #BaseFreq = D sharp
+        BaseFreq=155.563
+
+        #Note Number 0 = was originaly D sharp but is now a rest
+        #Note Number 1 = E or the open 6th string of a guitar
+        X=np.arange(0,7,1/12)
+        B=2**X*BaseFreq
+
+        secPerBeats=60/bpm
+        sampsPerPeriod=int(1/B[noteNumber]*sampsPerSec)
+        sampsPerNote=sampsPerSec*secPerBeats*noteLengthInBeats
+        cyclesPerNote=round(sampsPerNote/sampsPerPeriod*.9)
+        sampsWithSilence=round(sampsPerNote-cyclesPerNote*sampsPerPeriod)
+
+        E=round(bandwidth/(sampsPerSec/sampsPerPeriod)/2)
+        #Number of frequency components has to be 2 or greater otherwise
+        #the function won't make a note when the frequency is too high
+        E=np.max([E,2])
+        
+        F=np.zeros(sampsPerPeriod)
+        F[0:E]=np.ones(E)
+        G=np.real(np.fft.fft(F))
+        G=G-np.mean(G)
+        G=G/np.max(G)
+
+        J=np.roll(G,round(sampsPerPeriod/2))
+        G=G-J
+        G=G/np.max(np.absolute(G))
+        
+        I=np.array([])
+
+        for k in range(cyclesPerNote):
+            I=np.concatenate([I,G])
+
+        E=round(bandwidth/(sampsPerSec/sampsWithSilence)/2)
+        F=np.zeros(sampsWithSilence)
+        F[0:E]=np.ones(E)
+        G=np.real(np.fft.fft(F))
+        G=G-np.mean(G)
+        G=G/np.max(G)
+
+        I=np.concatenate([I,G])
+
+        if noteNumber==0:
+            I=I*0
+
+        return(I)
+
+    if songName=="Air Force Song":
+        BPMval=300
+        A=[2,1,1,1,1,2,1,2,1,2,1,6,1,1,1,3,3,3,3,2,1,6,1,1,1,12,2,1,6,1,1,1,3,3,3,3,2,1,6,1,1,1,12,2,1,6,1,1,1,3,3,3,3,2,1,6,1,1,1,5,1,3,5,1,4,1,1,5,1,3,3,1,1,1,2,1,2,1,3,8,10]
+        B=[13,13,13,13,13,13,0,13,0,10,13,13,11,10,8,10,11,12,13,15,18,18,20,18,15,13,10,13,13,11,10,8,10,11,12,13,17,20,20,18,17,15,13,10,13,13,11,10,8,10,11,12,13,15,18,18,15,17,18,17,0,10,18,18,19,19,19,20,20,21,21,22,20,18,22,18,22,18,20,18,0]
+    elif songName=="Anchors Away":
+        BPMval=150
+        A=[2,1,1,1.5,.5,2,2,1,1,4,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,1,1,1.5,.5,2,2,1,1,4,2,1,1,1,1,1,1,.75,.25,.5,.5,.75,.25,.5,.5,4,4]
+        B=[16,20,23,25,20,25,28,30,23,28,25,28,25,23,25,27,28,22,25,30,28,27,23,21,18,16,20,23,25,20,25,28,30,23,28,25,28,25,23,25,27,28,32,23,22,23,30,23,22,23,28,0]
+    elif songName=="Marine Hymn":
+        BPMval=240
+        A=[1,1,2,2,2,2,3,1,2,1,1,2,2,1,3,5,1,1,1,2,2,2,2,3,1,2,1,1,2,2,1,3,5,1,1.5,.5,2,2,2,2,3,1,2,1.5,.5,2,2,1,3,5,1,1,1,2,2,2,2,3,1,2,1,1,2,2,2,2,5,3]
+        B=[17,18,20,20,20,20,20,25,20,17,18,20,20,18,15,13,0,17,18,20,20,20,20,20,25,20,17,18,20,20,18,15,13,0,25,24,22,18,22,25,20,17,20,25,24,22,18,22,25,20,0,13,17,20,20,20,20,20,25,20,17,18,20,20,18,15,13,0]
+    elif songName=="Army Song":
+        BPMval=240
+        A=[2,1,1,2,1,1,2,1,1,1.5,.5,1,1,2,1,1,1,2,1,1,2,1,4,2,1,1,2,1,1,2,1,1,1.5,.5,1,1,2,1,1,1,2,1,1,2,1,4,2,1,1,2,2,2,1,1,1,1,1,1,4,1,2,1,1,1,1,1,4,2,1,1,2,2,4,1.5,.5,1,1,2,1,1,1,2,1,1,2,1,4,2,1,1,1,2,1,1,2,1,4]
+        B=[0,14,11,14,14,11,14,14,11,14,16,14,11,14,11,12,14,12,9,14,12,9,7,0,14,11,14,14,11,14,14,11,14,16,14,11,14,11,12,14,12,9,14,12,9,7,0,14,14,19,19,14,14,14,16,18,19,16,14,19,19,18,16,18,19,16,21,0,14,14,19,19,18,16,18,19,16,14,11,12,14,12,9,14,12,9,7,0,11,12,14,12,9,14,16,18,19]    
+    elif songName=="Baby Shark":
+        BPMval=110
+        A=[1,1,.5,.5,.5,.25,.5,.25,.5,.5,.5,.5,.5,.5,.25,.5,.25,.5,.5,.5,.5,.5,.5,.25,.5,.25,.5,.5,.5,1,1]
+        B=[9,11,14,14,14,14,14,14,14,9,11,14,14,14,14,14,14,14,9,11,14,14,14,14,14,14,14,14,14,13,0]
+    elif songName=="Star Wars":
+        BPMval=160
+        A=[1.5,0.25,0.25,1.5,0.25,0.25,0.33,0.33,0.33,0.33,0.33,0.33,0.33,0.33,0.33,0.66,0.17,0.17,0.17,0.33,0.33,0.33,1,1,0.33,0.33,0.33,4,4,0.66,0.66,0.66,4,2,0.66,0.66,0.66,4,2,0.66,0.66,0.66,4,1,0.33,0.33,0.33,4,4,0.66,0.66,0.66,4,2,0.66,0.66,0.66,4,2,0.66,0.66,0.66,3,1,1.5,0.5,3,1,1,1,1,1,0.66,0.66,0.66,1.5,0.5,2,1.5,0.5,3,1,1,1,1,0.5,0.5,1.5,0.5,5,1,3,1,1,1,1,1,0.66,0.66,0.66,1.5,0.5,2,1.5,0.5,1.33,0.66,1.33,0.66,1.33,0.66,1.33,0.66,6,0.66,0.66,0.66,3,1,2,2,4,4,0.66,0.66,0.66,4,2,0.66,0.66,0.66,4,2,0.66,0.66,0.66,3,1]
+        B=[7,7,7,7,7,7,7,2,12,14,12,7,7,2,12,14,7,7,7,12,7,14,17,0,2,2,2,7,14,12,11,9,19,14,12,11,9,19,14,12,11,12,9,0,2,2,2,7,14,12,11,9,19,14,12,11,9,19,14,12,11,12,9,0,2,2,4,4,12,11,9,7,7,9,11,9,4,6,2,2,4,4,12,11,9,7,14,14,9,9,2,4,6,12,11,9,7,7,9,11,9,4,6,14,14,19,17,15,14,12,10,9,7,14,14,14,14,4,7,12,9,7,14,12,11,9,19,14,12,11,9,19,14,12,11,12,9,0]
+    elif songName=="Pink Panther":
+        BPMval=320
+        A=[1,1,4,1,1,4,1,1,1,1,1,1,1,1,1,1,1,1,1,7,1,1,1,1,7,5,1,1,4,1,1,4,1,1,1,1,1,1,1,1,1,1,1,1,1,18,5,1,1,4,1,1,4,1,1,1,1,1,1,1,1,1,1,1,1,1,7,1,1,1,1,7,9,2,1,2,1,2,1,1,2,1,2,1,2,1,2,1,1,1,2,13,5]
+        B=[12,13,0,15,16,0,12,13,0,15,16,0,21,20,0,13,16,0,20,19,18,16,13,11,13,0,12,13,0,15,16,0,12,13,0,15,16,0,21,20,0,16,20,0,25,24,0,12,13,0,15,16,0,12,13,0,15,16,0,21,20,0,13,16,0,20,19,18,16,13,11,13,0,25,23,20,18,16,13,19,18,19,18,19,18,19,18,16,13,11,13,13,0]
+    elif songName=="Mission Impossible":
+        BPMval=90
+        A=[0.5,0.25,0.5,0.25,0.75,0.5,0.25,0.5,0.5,0.5,0.25,0.5,0.25,0.75,0.5,0.25,0.5,0.5,0.25,0.25,3.5,0.25,0.25,3.5,0.25,0.25,3.5,0.25,0.25,3.5,0.25,0.25,3.5,0.25,0.25,3.5,0.25,0.25,3.5,0.25,0.25,3.5,0.25,0.25,3.5,0.25,0.25,3.5,0.25,0.25,3.5,0.25,0.25,3.5,0.25,0.25,3.5,0.25,0.25,3.5,0.25,0.25,3.5,0.25,0.25,3.5,0.25,0.25,3.5,0.25,0.25,3.5,0.25,0.25,3.5,0.25,0.25,1.75,0.75,0.5,0.5,0.75,3.25,2.25,0.25,0.25,0.25,2.25,0.25,0.25,0.25,2.25,0.25,0.25,0.25,0.25,2.75,1]
+        B=[6,6,6,6,6,6,6,9,11,6,6,6,6,6,6,6,4,5,21,18,13,21,18,13,21,18,11,9,11,0,9,6,17,9,6,16,9,6,15,14,13,0,26,23,18,26,23,17,26,23,16,14,16,0,9,6,17,9,6,16,9,6,15,14,13,0,21,18,13,21,18,12,21,18,11,9,11,0,18,21,23,25,0,11,6,9,11,10,6,11,10,9,6,9,8,7,6,0]
+    elif songName=="Annoying Tone":
+        BPMval=100
+        A=[1]
+        B=[60]
+    else:
+        print("error")
+
+    bandwidthHz=bandwidth_hz
+    sampleRateHz=sample_rate_hz
+
+    Q=np.array([])
+    for j in range(len(A)):
+        Q=np.concatenate([Q,noteMaker(A[j],B[j],BPMval,sampleRateHz,bandwidthHz)])
+
+    Q=Q/np.std(Q)
+
+    return Q
+
+
 # A dictionary to map waveform names to their functions and parameter names
 # This is now stored with the functions themselves for better organization.
 waveform_definitions = {
     "Narrowband Noise": {
         "func": narrowband_noise_creator,
-        "params": ["bandwidth_hz", "sample_rate_hz", "technique_length_seconds", "interference_type"],
-        "params2": ["Bandwidth (Hz)", "Sample Rate (Hz)", "Technique Length (seconds)", "Interference Type (real or complex)"]
+        "params": [
+            {"name": "bandwidth_hz", "title": "Bandwidth (Hz)", "type": "entry"},
+            {"name": "sample_rate_hz", "title": "Sample Rate (Hz)", "type": "entry"},
+            {"name": "technique_length_seconds", "title": "Technique Length (seconds)", "type": "entry"},
+            {"name": "interference_type", "title": "Interference Type", "type": "options", "choices": ["complex", "real", "sinc"]}
+        ]
     },
     "RRC Modulated Noise": {
         "func": rrc_modulated_noise,
-        "params": ["symbol_rate_hz", "sample_rate_hz", "rolloff", "technique_length_seconds"],
-        "params2": ["Symbol Rate (Hz)", "Sample Rate (Hz)", "rolloff (0 < r < 1)", "Technique Length (seconds)"]
+        "params": [
+            {"name": "symbol_rate_hz", "title": "Symbol Rate (Hz)", "type": "entry"},
+            {"name": "sample_rate_hz", "title": "Sample Rate (Hz)", "type": "entry"},
+            {"name": "rolloff", "title": "Rolloff (0 < r < 1)", "type": "entry"},
+            {"name": "technique_length_seconds", "title": "Technique Length (seconds)", "type": "entry"}
+        ]
     },
     "Swept Noise": {
         "func": swept_noise_creator,
-        "params": ["sweep_hz", "bandwidth_hz", "sample_rate_hz", "technique_length_seconds", "interference_type"],
-        "params2": ["Sweep (Hz)", "Bandwidth (Hz)", "Sample Rate (Hz)", "Technique Length (seconds)", "Interference Type (real or complex)"]
+        "params": [
+            {"name": "sweep_hz", "title": "Sweep (Hz)", "type": "entry"},
+            {"name": "bandwidth_hz", "title": "Bandwidth (Hz)", "type": "entry"},
+            {"name": "sample_rate_hz", "title": "Sample Rate (Hz)", "type": "entry"},
+            {"name": "technique_length_seconds", "title": "Technique Length (seconds)", "type": "entry"},
+            {"name": "interference_type", "title": "Interference Type", "type": "options", "choices": ["complex", "real", "sinc"]}
+        ]
     },
     "Chunked Noise": {
         "func": chunk_noise_creator,
-        "params": ["technique_width_hz", "chunks", "sample_rate_hz", "technique_length_seconds", "interference_type"],
-        "params2": ["Technique Width (Hz)", "Chunks (Integer)", "Sample Rate (Hz)", "Technique Length (seconds)", "Interference Type (real or complex)"]
+        "params": [
+            {"name": "technique_width_hz", "title": "Technique Width (Hz)", "type": "entry"},
+            {"name": "chunks", "title": "Chunks (Integer)", "type": "entry"},
+            {"name": "sample_rate_hz", "title": "Sample Rate (Hz)", "type": "entry"},
+            {"name": "technique_length_seconds", "title": "Technique Length (seconds)", "type": "entry"},
+            {"name": "interference_type", "title": "Interference Type", "type": "options", "choices": ["complex", "real", "sinc"]}
+        ]
     },
     "Noise Tones": {
         "func": noise_tones,
-        "params": ["frequencies_str", "bandwidth_hz", "sample_rate_hz", "technique_length_seconds", "interference_type"],
-        "params2": ["Space Delimited Frequencies (Hz)", "Bandwidth (Hz)", "Sample Rate (Hz)", "Technique Length seconds", "Interference Type (real or complex)"]
+        "params": [
+            {"name": "frequencies_str", "title": "Space Delimited Frequencies (Hz)", "type": "entry"},
+            {"name": "bandwidth_hz", "title": "Bandwidth (Hz)", "type": "entry"},
+            {"name": "sample_rate_hz", "title": "Sample Rate (Hz)", "type": "entry"},
+            {"name": "technique_length_seconds", "title": "Technique Length seconds", "type": "entry"},
+            {"name": "interference_type", "title": "Interference Type", "type": "options", "choices": ["complex", "real", "sinc"]}
+        ]
     },
     "Cosine Tones": {
         "func": cosine_tones,
-        "params": ["frequencies_str", "sample_rate_hz", "technique_length_seconds"],
-        "params2": ["Space Delimited Frequencies (Hz)", "Sample Rate (Hz)", "Technique Length (seconds)"]
+        "params": [
+            {"name": "frequencies_str", "title": "Space Delimited Frequencies (Hz)", "type": "entry"},
+            {"name": "sample_rate_hz", "title": "Sample Rate (Hz)", "type": "entry"},
+            {"name": "technique_length_seconds", "title": "Technique Length (seconds)", "type": "entry"}
+        ]
     },
     "Phasor Tones": {
         "func": phasor_tones,
-        "params": ["frequencies_str", "sample_rate_hz", "technique_length_seconds"],
-        "params2": ["Space Delimited Frequencies (Hz)", "Sample Rate (Hz)", "Technique Length (seconds)"]
+        "params": [
+            {"name": "frequencies_str", "title": "Space Delimited Frequencies (Hz)", "type": "entry"},
+            {"name": "sample_rate_hz", "title": "Sample Rate (Hz)", "type": "entry"},
+            {"name": "technique_length_seconds", "title": "Technique Length (seconds)", "type": "entry"}
+        ]
     },
     "Swept Phasors": {
         "func": swept_phasors,
-        "params": ["sweep_hz", "tones", "sample_rate_hz", "technique_length_seconds"],
-        "params2": ["Sweep (Hz)", "Tones (Integer)", "Sample Rate (Hz)", "Technique Length (seconds)"]
+        "params": [
+            {"name": "sweep_hz", "title": "Sweep (Hz)", "type": "entry"},
+            {"name": "tones", "title": "Tones (Integer)", "type": "entry"},
+            {"name": "sample_rate_hz", "title": "Sample Rate (Hz)", "type": "entry"},
+            {"name": "technique_length_seconds", "title": "Technique Length (seconds)", "type": "entry"}
+        ]
     },
     "Swept Cosines": {
         "func": swept_cosines,
-        "params": ["sweep_hz", "tones", "sample_rate_hz", "technique_length_seconds"],
-        "params2": ["Sweep (Hz)", "Tones (Integer)", "Sample Rate (Hz)", "Technique Length (seconds)"]
+        "params": [
+            {"name": "sweep_hz", "title": "Sweep (Hz)", "type": "entry"},
+            {"name": "tones", "title": "Tones (Integer)", "type": "entry"},
+            {"name": "sample_rate_hz", "title": "Sample Rate (Hz)", "type": "entry"},
+            {"name": "technique_length_seconds", "title": "Technique Length (seconds)", "type": "entry"}
+        ]
     },
     "FM Cosine": {
         "func": FM_cosine,
-        "params": ["sweep_range_hz", "modulated_frequency", "sample_rate_hz", "technique_length_seconds"],
-        "params2": ["Sweep Range (Hz)", "Modulated Frequency (Hz)", "Sample Rate (Hz)", "Technique Length (seconds)"]
+        "params": [
+            {"name": "sweep_range_hz", "title": "Sweep Range (Hz)", "type": "entry"},
+            {"name": "modulated_frequency", "title": "Modulated Frequency (Hz)", "type": "entry"},
+            {"name": "sample_rate_hz", "title": "Sample Rate (Hz)", "type": "entry"},
+            {"name": "technique_length_seconds", "title": "Technique Length (seconds)", "type": "entry"}
+        ]
     },
+    "Song Maker": {
+        "func": songMaker,
+        "params": [
+            {"name": "songName", "title": "Song Name", "type": "options", "choices": ["Air Force Song", "Anchors Away", "Marine Hymn","Baby Shark","Pink Panther","Star Wars","Mission Impossible","Annoying Tone"]},
+            {"name": "bandwidth_hz", "title": "Bandwidth (Hz)", "type": "entry"},
+            {"name": "sample_rate_hz", "title": "Sample Rate (Hz)", "type": "entry"}
+        ]
+    }
 }
+

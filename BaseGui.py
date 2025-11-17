@@ -168,10 +168,13 @@ class WaveformApp(tk.Tk):
         self.param_vars.clear()
 
         selected_waveform = self.waveform_combobox.get()
-        params_list = self.waveform_definitions[selected_waveform]["params"]
-        params_list2 = self.waveform_definitions[selected_waveform]["params2"]
-
-        for param_name, param_title in zip(params_list,params_list2):
+        waveform_info = self.waveform_definitions[selected_waveform]
+        
+        for param_def in waveform_info["params"]:
+            param_name = param_def['name']
+            param_title = param_def['title']
+            param_type = param_def['type']
+            
             frame = ttk.Frame(self.param_frame)
             frame.pack(fill="x", pady=2)
             self.param_widgets.append(frame)
@@ -181,11 +184,23 @@ class WaveformApp(tk.Tk):
             self.param_widgets.append(label)
 
             var = tk.StringVar()
-            entry = ttk.Entry(frame, textvariable=var)
-            entry.pack(side="right", fill="x", expand=True)
-            self.param_widgets.append(entry)
-
             self.param_vars[param_name] = var
+
+            if param_type == "options":
+                choices = param_def['choices']
+                combobox = ttk.Combobox(
+                    frame,
+                    textvariable=var,
+                    values=choices,
+                    state="readonly"
+                )
+                combobox.pack(side="right", fill="x", expand=True)
+                combobox.set(choices[0])
+                self.param_widgets.append(combobox)
+            else: # Defaults to "entry"
+                entry = ttk.Entry(frame, textvariable=var)
+                entry.pack(side="right", fill="x", expand=True)
+                self.param_widgets.append(entry)
 
     def generate_and_save(self):
         """Handles the core logic of creating the waveform and saving the file."""
@@ -202,9 +217,7 @@ class WaveformApp(tk.Tk):
             params = {}
             for name, var in self.param_vars.items():
                 value_str = var.get()
-                
                 params[name] = infer_type_from_string(value_str)
-                
 
             # 3. Ask user for a filename
             file_extension = format_def["ext"]
